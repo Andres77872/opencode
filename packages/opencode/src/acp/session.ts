@@ -7,6 +7,7 @@ const log = Log.create({ service: "acp-session-manager" })
 
 export class ACPSessionManager {
   private sessions = new Map<string, ACPSessionState>()
+  private childToParent = new Map<string, string>()
   private sdk: OpencodeClient
 
   constructor(sdk: OpencodeClient) {
@@ -15,6 +16,17 @@ export class ACPSessionManager {
 
   tryGet(sessionId: string): ACPSessionState | undefined {
     return this.sessions.get(sessionId)
+  }
+
+  registerChild(childSessionId: string, parentSessionId: string) {
+    this.childToParent.set(childSessionId, parentSessionId)
+    log.info("registered_child_session", { childSessionId, parentSessionId })
+  }
+
+  resolveParent(sessionId: string): ACPSessionState | undefined {
+    const parentId = this.childToParent.get(sessionId)
+    if (!parentId) return undefined
+    return this.sessions.get(parentId)
   }
 
   async create(cwd: string, mcpServers: McpServer[], model?: ACPSessionState["model"]): Promise<ACPSessionState> {

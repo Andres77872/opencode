@@ -32,7 +32,7 @@ import { Log } from "../util/log"
 import { pathToFileURL } from "bun"
 import { Filesystem } from "../util/filesystem"
 import { ACPSessionManager } from "./session"
-import type { ACPConfig } from "./types"
+import type { ACPConfig, ACPSessionState } from "./types"
 import { Provider } from "../provider/provider"
 import { Agent as AgentModule } from "../agent/agent"
 import { Installation } from "@/installation"
@@ -178,21 +178,50 @@ export namespace ACP {
       }
     }
 
+    private async resolveSession(sessionId: string): Promise<ACPSessionState | undefined> {
+      const direct = this.sessionManager.tryGet(sessionId)
+      if (direct) return direct
+
+      const cached = this.sessionManager.resolveParent(sessionId)
+      if (cached) return cached
+
+      const session = await this.sdk.session
+        .get({ sessionID: sessionId, directory: process.cwd() }, { throwOnError: false })
+        .then((x) => x.data)
+        .catch(() => undefined)
+
+      if (!session?.parentID) return undefined
+
+      const parent = this.sessionManager.tryGet(session.parentID)
+      if (!parent) return undefined
+
+      this.sessionManager.registerChild(sessionId, session.parentID)
+      log.info("discovered_child_session", { childSessionId: sessionId, parentSessionId: session.parentID })
+      return parent
+    }
+
     private async handleEvent(event: Event) {
       switch (event.type) {
         case "permission.asked": {
           const permission = event.properties
-          const session = this.sessionManager.tryGet(permission.sessionID)
-          if (!session) return
+          const session = await this.resolveSession(permission.sessionID)
+          if (!session) {
+            log.debug("dropping permission event for untracked session", {
+              sessionId: permission.sessionID,
+              eventType: event.type,
+            })
+            return
+          }
+          const sessionId = session.id
 
-          const prev = this.permissionQueues.get(permission.sessionID) ?? Promise.resolve()
+          const prev = this.permissionQueues.get(sessionId) ?? Promise.resolve()
           const next = prev
             .then(async () => {
               const directory = session.cwd
 
               const res = await this.connection
                 .requestPermission({
-                  sessionId: permission.sessionID,
+                  sessionId,
                   toolCall: {
                     toolCallId: permission.tool?.callID ?? permission.id,
                     status: "pending",
@@ -236,7 +265,7 @@ export namespace ACP {
 
                 if (newContent) {
                   this.connection.writeTextFile({
-                    sessionId: session.id,
+                    sessionId,
                     path: filepath,
                     content: newContent,
                   })
@@ -253,11 +282,11 @@ export namespace ACP {
               log.error("failed to handle permission", { error, permissionID: permission.id })
             })
             .finally(() => {
-              if (this.permissionQueues.get(permission.sessionID) === next) {
-                this.permissionQueues.delete(permission.sessionID)
+              if (this.permissionQueues.get(sessionId) === next) {
+                this.permissionQueues.delete(sessionId)
               }
             })
-          this.permissionQueues.set(permission.sessionID, next)
+          this.permissionQueues.set(sessionId, next)
           return
         }
 
@@ -265,8 +294,14 @@ export namespace ACP {
           log.info("message part updated", { event: event.properties })
           const props = event.properties
           const part = props.part
-          const session = this.sessionManager.tryGet(part.sessionID)
-          if (!session) return
+          const session = await this.resolveSession(part.sessionID)
+          if (!session) {
+            log.debug("dropping message.part.updated for untracked session", {
+              sessionId: part.sessionID,
+              eventType: event.type,
+            })
+            return
+          }
           const sessionId = session.id
 
           if (part.type === "tool") {
@@ -451,8 +486,14 @@ export namespace ACP {
 
         case "message.part.delta": {
           const props = event.properties
-          const session = this.sessionManager.tryGet(props.sessionID)
-          if (!session) return
+          const session = await this.resolveSession(props.sessionID)
+          if (!session) {
+            log.debug("dropping message.part.delta for untracked session", {
+              sessionId: props.sessionID,
+              eventType: event.type,
+            })
+            return
+          }
           const sessionId = session.id
 
           const message = await this.sdk.session
@@ -1481,6 +1522,7 @@ export namespace ACP {
     const tool = toolName.toLocaleLowerCase()
     switch (tool) {
       case "bash":
+      case "task":
         return "execute"
       case "webfetch":
         return "fetch"
