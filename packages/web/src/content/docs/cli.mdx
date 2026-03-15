@@ -155,6 +155,52 @@ opencode auth logout
 
 ---
 
+### db
+
+Database tools for inspecting and managing the OpenCode SQLite database.
+
+```bash
+opencode db [query]
+```
+
+When run without arguments, opens an interactive `sqlite3` shell. When given a SQL query, runs it and prints the results.
+
+```bash
+# Open interactive shell
+opencode db
+
+# Run a query
+opencode db "SELECT id, title FROM session ORDER BY created_at DESC LIMIT 10"
+```
+
+#### Flags
+
+| Flag       | Description                     |
+| ---------- | ------------------------------- |
+| `--format` | Output format: `tsv` or `json`  |
+
+---
+
+#### path
+
+Print the path to the database file.
+
+```bash
+opencode db path
+```
+
+---
+
+#### migrate
+
+Migrate legacy JSON data to SQLite (merges with existing data).
+
+```bash
+opencode db migrate
+```
+
+---
+
 ### github
 
 Manage the GitHub agent for repository automation.

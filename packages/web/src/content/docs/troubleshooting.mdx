@@ -31,9 +31,19 @@ This directory contains:
 
 - `auth.json` - Authentication data like API keys, OAuth tokens
 - `log/` - Application logs
-- `project/` - Project-specific data like session and message data
-  - If the project is within a Git repo, it is stored in `./<project-slug>/storage/`
-  - If it is not a Git repo, it is stored in `./global/storage/`
+- `opencode.db` - SQLite database storing all session and message data
+
+To find the exact path to the database file, run:
+
+```bash
+opencode db path
+```
+
+You can also open an interactive SQLite shell to inspect the database:
+
+```bash
+opencode db
+```
 
 ---
 
