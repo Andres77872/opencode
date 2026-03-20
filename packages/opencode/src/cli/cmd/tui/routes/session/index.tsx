@@ -927,6 +927,7 @@ export function Session() {
     {
       title: "View session usage",
       value: "session.usage",
+      keybind: "session_usage",
       category: "Session",
       slash: {
         name: "usage",
