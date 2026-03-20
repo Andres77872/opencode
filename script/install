@@ -50,7 +50,7 @@ echo "installing dependencies..."
 bun install
 
 echo "building opencode..."
-bun run packages/opencode/script/build.ts --single
+OPENCODE_CHANNEL=latest bun run packages/opencode/script/build.ts --single
 
 platform=$(detect_platform)
 arch=$(detect_arch)
