@@ -75,8 +75,18 @@ if [[ ! -f "$binary_path" ]]; then
 fi
 
 mkdir -p "$INSTALL_DIR"
+rm -f "$INSTALL_DIR/opencode"
 cp "$binary_path" "$INSTALL_DIR/opencode"
 chmod +x "$INSTALL_DIR/opencode"
+
+# clean stale copies from other known locations
+# NOTE: only removes the binary, NOT the parent dir (opencode.db lives in ~/.local/share/opencode/)
+for dir in "$HOME/.local/bin" "$HOME/bin" "$HOME/.local/share/opencode/bin"; do
+    if [[ "$dir" != "$INSTALL_DIR" && -f "$dir/opencode" ]]; then
+        echo "removing stale binary: $dir/opencode"
+        rm -f "$dir/opencode"
+    fi
+done
 
 echo "installed: $INSTALL_DIR/opencode"
 
