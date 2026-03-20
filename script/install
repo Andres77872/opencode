@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BRANCH="magic"
+INSTALL_DIR="$HOME/.local/bin"
+
+check_cmd() {
+    if ! command -v "$1" &> /dev/null; then
+        echo "error: $1 is required but not installed"
+        exit 1
+    fi
+}
+
+detect_platform() {
+    case "$(uname -s)" in
+        Linux*)  echo "linux" ;;
+        Darwin*) echo "darwin" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+        *)       echo "unknown" ;;
+    esac
+}
+
+detect_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64) echo "x64" ;;
+        arm64|aarch64) echo "arm64" ;;
+        *)             echo "unknown" ;;
+    esac
+}
+
+echo "checking prerequisites..."
+check_cmd bun
+check_cmd git
+
+echo "pulling latest from origin/$BRANCH..."
+if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+    echo "error: not in a git repository"
+    exit 1
+fi
+
+if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
+    echo "warning: working tree has uncommitted changes"
+fi
+
+git fetch origin "$BRANCH"
+git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" "origin/$BRANCH"
+git pull --rebase origin "$BRANCH"
+
+echo "installing dependencies..."
+bun install
+
+echo "building opencode..."
+bun run packages/opencode/script/build.ts --single
+
+platform=$(detect_platform)
+arch=$(detect_arch)
+
+if [[ "$platform" == "unknown" || "$arch" == "unknown" ]]; then
+    echo "error: unsupported platform ($platform) or architecture ($arch)"
+    exit 1
+fi
+
+dist_name="opencode-${platform}-${arch}"
+binary_path="packages/opencode/dist/${dist_name}/bin/opencode"
+
+if [[ "$platform" == "windows" ]]; then
+    if [[ -f "${binary_path}.exe" ]]; then
+        binary_path="${binary_path}.exe"
+    fi
+fi
+
+if [[ ! -f "$binary_path" ]]; then
+    echo "error: binary not found at $binary_path"
+    exit 1
+fi
+
+mkdir -p "$INSTALL_DIR"
+cp "$binary_path" "$INSTALL_DIR/opencode"
+chmod +x "$INSTALL_DIR/opencode"
+
+echo "installed: $INSTALL_DIR/opencode"
+
+if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
+    shell=$(basename "${SHELL:-bash}")
+    case "$shell" in
+        fish)
+            echo "warning: $INSTALL_DIR is not in PATH"
+            echo "add to ~/.config/fish/config.fish:"
+            echo "  set -gx PATH \$PATH $INSTALL_DIR"
+            ;;
+        *)
+            echo "warning: $INSTALL_DIR is not in PATH"
+            echo "add to ~/.${shell}rc:"
+            echo "  export PATH=\"\$PATH:$INSTALL_DIR\""
+            ;;
+    esac
+fi
+
+"$INSTALL_DIR/opencode" --version
