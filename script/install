@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BRANCH="magic"
-INSTALL_DIR="$HOME/bin"
+INSTALL_DIR="$HOME/.local/share/opencode/bin"
 
 check_cmd() {
     if ! command -v "$1" &> /dev/null; then
