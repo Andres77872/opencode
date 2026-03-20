@@ -81,6 +81,7 @@ import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { formatTranscript } from "../../util/transcript"
 import { UI } from "@/cli/ui.ts"
 import { useTuiConfig } from "../../context/tui-config"
+import { DialogSessionUsage } from "../../component/dialog-session-usage"
 
 addDefaultParsers(parsers.parsers)
 
@@ -921,6 +922,17 @@ export function Session() {
           toast.show({ message: "Failed to export session", variant: "error" })
         }
         dialog.clear()
+      },
+    },
+    {
+      title: "View session usage",
+      value: "session.usage",
+      category: "Session",
+      slash: {
+        name: "usage",
+      },
+      onSelect: (dialog) => {
+        dialog.replace(() => <DialogSessionUsage />)
       },
     },
     {
