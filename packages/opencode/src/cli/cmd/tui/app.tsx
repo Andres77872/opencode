@@ -25,6 +25,7 @@ import { KeybindProvider } from "@tui/context/keybind"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
+import { Stats } from "@tui/routes/stats"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -575,6 +576,19 @@ function App() {
       category: "System",
     },
     {
+      title: "Stats dashboard",
+      value: "stats.view",
+      keybind: "stats_view",
+      category: "Stats",
+      slash: {
+        name: "stats",
+        aliases: ["dashboard", "usage"],
+      },
+      onSelect: () => {
+        route.navigate({ type: "stats" })
+      },
+    },
+    {
       title: "Open docs",
       value: "docs.open",
       onSelect: () => {
@@ -759,6 +773,9 @@ function App() {
         </Match>
         <Match when={route.data.type === "session"}>
           <Session />
+        </Match>
+        <Match when={route.data.type === "stats"}>
+          <Stats />
         </Match>
       </Switch>
     </box>
