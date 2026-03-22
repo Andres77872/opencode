@@ -482,10 +482,7 @@ export namespace Stats {
       }
     }
 
-    return [...byProject.entries()]
-      .filter(([, data]) => data.sessions > 0)
-      .map(([projectID, data]) => ({ projectID, ...data }))
-      .sort((a, b) => b.cost - a.cost)
+    return [...byProject.entries()].map(([projectID, data]) => ({ projectID, ...data })).sort((a, b) => b.cost - a.cost)
   }
 
   export function sessions(

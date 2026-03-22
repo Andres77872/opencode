@@ -15,12 +15,15 @@ function formatNum(n: number): string {
 
 export function Projects() {
   const { theme } = useTheme()
-  const { filter } = useStats()
+  const stats = useStats()
   const source = useSource()
   const [selected, setSelected] = createSignal(0)
   const [expanded, setExpanded] = createSignal<number | undefined>()
 
-  const [data] = createResource(() => Stats.projects(source, filter))
+  const [data] = createResource(
+    () => ({ filter: stats.filter, projects: stats.projects }),
+    (deps) => Stats.projects({ ...source, projects: deps.projects }, deps.filter),
+  )
 
   const tableData = () => {
     const d = data()
