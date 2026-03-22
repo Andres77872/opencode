@@ -1,10 +1,10 @@
-import { For, Show, createMemo, createResource } from "solid-js"
+import { Show, createMemo, createResource } from "solid-js"
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { useStats, useSource } from "./context"
-import { VertChart } from "../../component/stats/vert-chart"
 import { BarChart } from "../../component/stats/bar-chart"
+import { StatGrid } from "../../component/stats/stat-grid"
 import { StatTable } from "../../component/stats/stat-table"
 import { Stats } from "../../../../../session/stats"
 import { Locale } from "@/util/locale"
@@ -26,39 +26,69 @@ function fmtK(n: number): string {
 
 export function Daily() {
   const { theme } = useTheme()
-  const { filter } = useStats()
+  const stats = useStats()
   const dim = useTerminalDimensions()
   const source = useSource()
 
-  const [data] = createResource(() => Stats.daily(source, filter))
+  const [data] = createResource(
+    () => stats.filter,
+    (f) => Stats.daily(source, f),
+  )
 
   const wide = createMemo(() => dim().width >= 80)
-  const chartW = createMemo(() => Math.max(20, Math.min(50, dim().width - 20)))
+  const chartW = createMemo(() => Math.max(20, Math.min(60, dim().width - 16)))
 
-  // Reversed (oldest → newest) for charts
+  // Oldest → newest for charts (chronological order)
   const rev = createMemo(() => {
     const d = data()
     return d ? d.slice().reverse() : []
   })
 
-  const costChart = createMemo(() => rev().map((row) => ({ label: fmtDate(row.date), value: row.cost })))
+  // Aggregated totals for the summary grid
+  const totals = createMemo(() => {
+    const d = data()
+    if (!d || d.length === 0) return null
+    const cost = d.reduce((s, r) => s + (Number(r.cost) || 0), 0)
+    const sessions = d.reduce((s, r) => s + (Number(r.sessions) || 0), 0)
+    const msgs = d.reduce((s, r) => s + (Number(r.messages) || 0), 0)
+    const requests = d.reduce((s, r) => s + (Number(r.requests) || 0), 0)
+    const input = d.reduce((s, r) => s + (Number(r.input) || 0), 0)
+    const cache = d.reduce((s, r) => s + (Number(r.cacheRead) || 0), 0)
+    const output = d.reduce((s, r) => s + (Number(r.output) || 0), 0)
+    const tokens = input + cache + output
+    const days = d.length
+    return { cost, sessions, msgs, requests, tokens, days, avgCost: days > 0 ? cost / days : 0 }
+  })
 
-  const sessionsChart = createMemo(() => rev().map((row) => ({ label: fmtDate(row.date), value: row.sessions })))
+  const summary = createMemo(() => {
+    const t = totals()
+    if (!t) return []
+    return [
+      { label: "Total cost", value: fmtCost(t.cost) },
+      { label: "Sessions", value: Locale.number(t.sessions) },
+      { label: "Messages", value: Locale.number(t.msgs) },
+      { label: "Requests", value: Locale.number(t.requests) },
+      { label: "Tokens", value: fmtK(t.tokens) },
+      { label: "Avg cost/day", value: fmtCost(t.avgCost) },
+    ]
+  })
 
-  const userMsgChart = createMemo(() => rev().map((row) => ({ label: fmtDate(row.date), value: row.userMessages })))
+  // Activity chart — sessions per day
+  const activity = createMemo(() => rev().map((r) => ({ label: fmtDate(r.date), value: Number(r.sessions) || 0 })))
 
-  const requestsChart = createMemo(() => rev().map((row) => ({ label: fmtDate(row.date), value: row.requests })))
-
-  const tokenChart = createMemo(() =>
-    rev().map((row) => {
-      const total = (Number(row.input) || 0) + (Number(row.cacheRead) || 0) + (Number(row.output) || 0)
+  // Token chart — stacked input/cache/output
+  const tokens = createMemo(() =>
+    rev().map((r) => {
+      const input = Number(r.input) || 0
+      const cache = Number(r.cacheRead) || 0
+      const output = Number(r.output) || 0
       return {
-        label: fmtDate(row.date),
-        value: total,
+        label: fmtDate(r.date),
+        value: input + cache + output,
         segments: [
-          { value: Number(row.input) || 0, color: theme.primary, char: "█" },
-          { value: Number(row.cacheRead) || 0, color: theme.info, char: "▓" },
-          { value: Number(row.output) || 0, color: theme.success, char: "░" },
+          { value: input, color: theme.primary, char: "█" },
+          { value: cache, color: theme.info, char: "▓" },
+          { value: output, color: theme.success, char: "░" },
         ],
       }
     }),
@@ -67,27 +97,27 @@ export function Daily() {
   const tableData = createMemo(() => {
     const d = data()
     if (!d) return []
-    return d.map((row) => ({
-      date: fmtDate(row.date),
-      cost: fmtCost(row.cost),
-      sessions: Number(row.sessions) || 0,
-      userMsgs: Number(row.userMessages) || 0,
-      requests: Number(row.requests) || 0,
-      input: Locale.number(Number(row.input) || 0),
-      cache: Locale.number(Number(row.cacheRead) || 0),
-      output: Locale.number(Number(row.output) || 0),
+    return d.map((r) => ({
+      date: fmtDate(r.date),
+      cost: fmtCost(r.cost),
+      sessions: Number(r.sessions) || 0,
+      msgs: Number(r.messages) || 0,
+      requests: Number(r.requests) || 0,
+      input: Locale.number(Number(r.input) || 0),
+      cache: Locale.number(Number(r.cacheRead) || 0),
+      output: Locale.number(Number(r.output) || 0),
     }))
   })
 
   const columns = [
     { key: "date", label: "Date", width: 8 },
     { key: "cost", label: "Cost", width: 8, align: "right" as const },
-    { key: "sessions", label: "Sessions", width: 8, align: "right" as const },
-    { key: "userMsgs", label: "UserMsgs", width: 8, align: "right" as const },
-    { key: "requests", label: "Requests", width: 8, align: "right" as const },
-    { key: "input", label: "Input", width: 8, align: "right" as const },
-    { key: "cache", label: "Cache", width: 8, align: "right" as const },
-    { key: "output", label: "Output", width: 8, align: "right" as const },
+    { key: "sessions", label: "Sess", width: 5, align: "right" as const },
+    { key: "msgs", label: "Msgs", width: 5, align: "right" as const },
+    { key: "requests", label: "Reqs", width: 5, align: "right" as const },
+    { key: "input", label: "Input", width: 10, align: "right" as const },
+    { key: "cache", label: "Cache", width: 10, align: "right" as const },
+    { key: "output", label: "Output", width: 10, align: "right" as const },
   ]
 
   return (
@@ -99,46 +129,33 @@ export function Daily() {
         <text fg={theme.textMuted}>No daily data available</text>
       </Show>
       <Show when={!data.loading && data() && data()!.length > 0}>
-        {/* Section 1: Daily Cost */}
-        <Show when={wide()}>
-          <text fg={theme.primary} attributes={TextAttributes.BOLD}>
-            DAILY COST
-          </text>
-          <VertChart data={costChart()} height={8} />
-        </Show>
-
-        {/* Section 2: Daily Sessions */}
+        {/* Section 1: Summary */}
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
-          DAILY SESSIONS
+          SUMMARY
         </text>
-        <BarChart data={sessionsChart()} width={chartW()} valueFormat={(n) => String(Number(n) || 0)} />
+        <StatGrid items={summary()} columns={wide() ? 2 : 1} labelWidth={14} />
 
-        {/* Section 3: Daily User Messages */}
+        {/* Section 2: Activity (sessions per day) */}
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
-          DAILY USER MESSAGES
+          ACTIVITY
         </text>
-        <BarChart data={userMsgChart()} width={chartW()} valueFormat={(n) => String(Number(n) || 0)} />
+        <BarChart data={activity()} width={chartW()} valueFormat={(n) => String(Number(n) || 0)} />
 
-        {/* Section 4: Daily Requests */}
+        {/* Section 3: Tokens (stacked: input / cache / output) */}
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
-          DAILY REQUESTS
+          TOKENS{"  "}
+          <span style={{ fg: theme.primary }}>█</span>
+          <span style={{ fg: theme.textMuted }}> Input </span>
+          <span style={{ fg: theme.info }}>▓</span>
+          <span style={{ fg: theme.textMuted }}> Cache </span>
+          <span style={{ fg: theme.success }}>░</span>
+          <span style={{ fg: theme.textMuted }}> Output</span>
         </text>
-        <BarChart data={requestsChart()} width={chartW()} valueFormat={(n) => String(Number(n) || 0)} />
+        <BarChart data={tokens()} width={chartW()} valueFormat={fmtK} />
 
-        {/* Section 5: Daily Tokens (stacked) */}
+        {/* Section 4: Daily Breakdown Table */}
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
-          DAILY TOKENS
-        </text>
-        <text fg={theme.textMuted}>
-          <span style={{ fg: theme.primary }}>█</span> Input{"  "}
-          <span style={{ fg: theme.info }}>▓</span> Cache read{"  "}
-          <span style={{ fg: theme.success }}>░</span> Output
-        </text>
-        <BarChart data={tokenChart()} width={chartW()} valueFormat={fmtK} />
-
-        {/* Section 6: Daily Breakdown Table */}
-        <text fg={theme.primary} attributes={TextAttributes.BOLD}>
-          DAILY BREAKDOWN
+          BREAKDOWN
         </text>
         <StatTable columns={columns} data={tableData() as Record<string, unknown>[]} />
       </Show>
