@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js"
+import { createSignal, createResource } from "solid-js"
 import { createSimpleContext } from "../../context/helper"
 import { useSync } from "../../context/sync"
 import { useSDK } from "../../context/sdk"
@@ -10,14 +10,25 @@ export type TabName = (typeof tabs)[number]
 export const { use: useStats, provider: StatsProvider } = createSimpleContext({
   name: "Stats",
   init: () => {
+    const sdk = useSDK()
     const [tab, setTab] = createSignal(0)
     const [filter, setFilter] = createSignal<Stats.Filter>({})
+    const [projects] = createResource(async () => {
+      const r = await sdk.client.project.list()
+      return (r.data ?? []).map((p) => ({
+        id: p.id,
+        name: p.name || p.worktree?.split("/").pop() || p.id,
+      }))
+    })
     return {
       get tab() {
         return tab()
       },
       get filter() {
         return filter()
+      },
+      get projects() {
+        return projects() ?? []
       },
       tabs,
       setTab,
@@ -29,6 +40,7 @@ export const { use: useStats, provider: StatsProvider } = createSimpleContext({
 export function useSource(): Stats.Source {
   const sync = useSync()
   const sdk = useSDK()
+  const stats = useStats()
   return {
     sessions: sync.data.session,
     messages: async (sessionID: string) => {
@@ -39,5 +51,6 @@ export function useSource(): Stats.Source {
       const r = await sdk.client.session.children({ sessionID })
       return r.data ?? []
     },
+    projects: stats.projects,
   }
 }

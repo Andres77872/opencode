@@ -12,6 +12,8 @@ import { Projects } from "./projects"
 import { Sessions } from "./sessions"
 import { Config } from "./config"
 
+const dayPresets = [7, 30, 90, undefined] as const
+
 function Content() {
   const stats = useStats()
   const route = useRoute()
@@ -34,10 +36,29 @@ function Content() {
     }
     if (evt.name === "f") {
       evt.preventDefault()
-      // placeholder for filter dialog
+      const current = stats.filter.days
+      const idx = dayPresets.indexOf(current as (typeof dayPresets)[number])
+      const next = dayPresets[(idx + 1) % dayPresets.length]
+      stats.setFilter({ ...stats.filter, days: next })
       return
     }
-    // Number keys 1-7 for tab switching
+    if (evt.name === "p") {
+      evt.preventDefault()
+      const list = stats.projects
+      if (list.length === 0) return
+      const current = stats.filter.projectID
+      if (!current) {
+        stats.setFilter({ ...stats.filter, projectID: list[0].id })
+        return
+      }
+      const idx = list.findIndex((p) => p.id === current)
+      if (idx === -1 || idx === list.length - 1) {
+        stats.setFilter({ ...stats.filter, projectID: undefined })
+        return
+      }
+      stats.setFilter({ ...stats.filter, projectID: list[idx + 1].id })
+      return
+    }
     const num = parseInt(evt.name ?? "", 10)
     if (num >= 1 && num <= 7) {
       evt.preventDefault()
