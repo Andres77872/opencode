@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BRANCH="magic"
 INSTALL_DIR="$HOME/.opencode/bin"
 
 check_cmd() {
@@ -32,19 +31,25 @@ echo "checking prerequisites..."
 check_cmd bun
 check_cmd git
 
-echo "pulling latest from origin/$BRANCH..."
 if ! git rev-parse --is-inside-work-tree &> /dev/null; then
     echo "error: not in a git repository"
     exit 1
 fi
 
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [[ -z "$BRANCH" || "$BRANCH" == "HEAD" ]]; then
+    echo "error: could not determine current git branch"
+    exit 1
+fi
+
+echo "pulling latest from origin/$BRANCH..."
+
 if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
     echo "warning: working tree has uncommitted changes"
 fi
 
-git fetch origin "$BRANCH"
-git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" "origin/$BRANCH"
-git pull --rebase origin "$BRANCH"
+git fetch origin "$BRANCH" || true
+git pull --rebase origin "$BRANCH" || true
 
 echo "installing dependencies..."
 bun install
