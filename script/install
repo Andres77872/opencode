@@ -54,8 +54,14 @@ git pull --rebase origin "$BRANCH" || true
 echo "installing dependencies..."
 bun install
 
-echo "building opencode..."
-OPENCODE_CHANNEL=latest bun run packages/opencode/script/build.ts --single
+echo "cleaning up old installation caches and state (keeping data safe)..."
+pkill -9 -f opencode || true
+rm -rf "$HOME/.cache/opencode" "$HOME/.local/state/opencode"
+rm -rf packages/opencode/dist
+
+echo "building opencode as stable (latest channel)..."
+PKG_VERSION=$(node -p "require('./packages/opencode/package.json').version")
+OPENCODE_VERSION=$PKG_VERSION OPENCODE_CHANNEL=latest bun run packages/opencode/script/build.ts --single
 
 platform=$(detect_platform)
 arch=$(detect_arch)
