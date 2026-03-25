@@ -113,6 +113,10 @@ export namespace Stats {
   const cache = new Map<string, { data: unknown; expires: number }>()
   const TTL = 30_000
 
+  export function clearCache() {
+    cache.clear()
+  }
+
   function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const entry = cache.get(key)
     if (entry && entry.expires > Date.now()) return entry.data as Promise<T>
@@ -511,21 +515,19 @@ export namespace Stats {
           (m): m is { info: AssistantMessage; parts: Part[] } => m.info.role === "assistant",
         )
 
-        if (filter.modelID) {
-          const filtered = assistant.filter((m) => m.info.modelID === filter.modelID)
-          if (filtered.length === 0) return null
-        }
+        const scoped = filter.modelID ? assistant.filter((m) => m.info.modelID === filter.modelID) : assistant
+        if (filter.modelID && scoped.length === 0) return null
 
-        const cost = assistant.reduce((sum, m) => sum + msgcost(m.info), 0)
-        const primary = assistant.length > 0 ? assistant[0].info.modelID : "unknown"
-        const agent = assistant.length > 0 ? assistant[0].info.agent : "unknown"
+        const cost = scoped.reduce((sum, m) => sum + msgcost(m.info), 0)
+        const primary = scoped.length > 0 ? scoped[0].info.modelID : "unknown"
+        const agent = scoped.length > 0 ? scoped[0].info.agent : "unknown"
 
         return {
           id: s.id,
           title: s.title,
           date: s.time.created,
           cost,
-          messages: assistant.length,
+          messages: scoped.length,
           model: primary,
           agent,
           duration: s.time.updated - s.time.created,

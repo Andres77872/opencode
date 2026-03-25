@@ -59,6 +59,23 @@ function Content() {
       stats.setFilter({ ...stats.filter, projectID: list[idx + 1].id })
       return
     }
+    if (evt.name === "m") {
+      evt.preventDefault()
+      const list = stats.models
+      if (list.length === 0) return
+      const current = stats.filter.modelID
+      if (!current) {
+        stats.setFilter({ ...stats.filter, modelID: list[0].id })
+        return
+      }
+      const idx = list.findIndex((m) => m.id === current)
+      if (idx === -1 || idx === list.length - 1) {
+        stats.setFilter({ ...stats.filter, modelID: undefined })
+        return
+      }
+      stats.setFilter({ ...stats.filter, modelID: list[idx + 1].id })
+      return
+    }
     const num = parseInt(evt.name ?? "", 10)
     if (num >= 1 && num <= 7) {
       evt.preventDefault()

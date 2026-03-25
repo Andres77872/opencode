@@ -63,25 +63,30 @@ export function Models() {
     { key: "cost", label: "Cost", align: "right" as const, format: formatCostCol },
     { key: "input", label: "Input", align: "right" as const, format: formatNumCol },
     { key: "output", label: "Output", align: "right" as const, format: formatNumCol },
+    { key: "cacheRead", label: "Cache", align: "right" as const, format: formatNumCol },
     { key: "cacheRate", label: "Cache%", align: "right" as const, format: formatPctCol },
   ]
 
   function expandContent(row: Record<string, unknown>): JSX.Element {
     const provider = (row.providerID as string) ?? ""
     const avgCost = Number(row.avgCost) || 0
+    const input = Number(row.input) || 0
+    const output = Number(row.output) || 0
     const reasoning = Number(row.reasoning) || 0
     const reasoningRatio = Number(row.reasoningRatio) || 0
     const cacheRead = Number(row.cacheRead) || 0
     const cacheWrite = Number(row.cacheWrite) || 0
+    const total = input + output + cacheRead
     return (
       <box flexDirection="column">
         <text fg={theme.textMuted}>Provider: {provider}</text>
+        <text fg={theme.textMuted}>Total tokens: {Locale.number(total)}</text>
         <text fg={theme.textMuted}>Avg cost/msg: {formatCost(avgCost)}</text>
         <text fg={theme.textMuted}>
-          Reasoning: {Locale.number(reasoning)} tokens ({formatPct(reasoningRatio)} of output)
+          Reasoning: {Locale.number(reasoning)} ({formatPct(reasoningRatio)} of output)
         </text>
         <text fg={theme.textMuted}>
-          Cache read: {Locale.number(cacheRead)} | Cache write: {Locale.number(cacheWrite)}
+          Cache read: {Locale.number(cacheRead)} | write: {Locale.number(cacheWrite)}
         </text>
       </box>
     )

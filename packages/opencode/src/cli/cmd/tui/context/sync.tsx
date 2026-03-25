@@ -17,6 +17,7 @@ import type {
   ProviderListResponse,
   ProviderAuthMethod,
   VcsInfo,
+  GlobalSession,
 } from "@opencode-ai/sdk/v2"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useSDK } from "@tui/context/sdk"
@@ -49,6 +50,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       }
       config: Config
       session: Session[]
+      globalSession: GlobalSession[]
       session_status: {
         [sessionID: string]: SessionStatus
       }
@@ -91,6 +93,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       provider: [],
       provider_default: {},
       session: [],
+      globalSession: [],
       session_status: {},
       session_diff: {},
       todo: {},
@@ -358,7 +361,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     async function bootstrap() {
       console.log("bootstrapping")
       const start = Date.now() - 30 * 24 * 60 * 60 * 1000
-      const sessionListPromise = sdk.client.session
+
+      // Project-scoped sessions for session context (non-dashboard consumers)
+      const projectSessionPromise = sdk.client.session
+        .list({ start: start })
+        .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
+
+      // Global sessions for dashboard aggregation only
+      const globalSessionPromise = sdk.client.experimental.session
         .list({ start: start })
         .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
 
@@ -372,7 +382,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         providerListPromise,
         agentsPromise,
         configPromise,
-        ...(args.continue ? [sessionListPromise] : []),
+        ...(args.continue ? [projectSessionPromise] : []),
       ]
 
       await Promise.all(blockingRequests)
@@ -381,14 +391,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const providerListResponse = providerListPromise.then((x) => x.data!)
           const agentsResponse = agentsPromise.then((x) => x.data ?? [])
           const configResponse = configPromise.then((x) => x.data!)
-          const sessionListResponse = args.continue ? sessionListPromise : undefined
+          const projectSessionResponse = args.continue ? projectSessionPromise : undefined
 
           return Promise.all([
             providersResponse,
             providerListResponse,
             agentsResponse,
             configResponse,
-            ...(sessionListResponse ? [sessionListResponse] : []),
+            ...(projectSessionResponse ? [projectSessionResponse] : []),
           ]).then((responses) => {
             const providers = responses[0]
             const providerList = responses[1]
@@ -410,7 +420,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (store.status !== "complete") setStore("status", "partial")
           // non-blocking
           Promise.all([
-            ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", reconcile(sessions)))]),
+            ...(args.continue
+              ? []
+              : [projectSessionPromise.then((sessions) => setStore("session", reconcile(sessions)))]),
+            globalSessionPromise.then((sessions) => setStore("globalSession", reconcile(sessions))),
             sdk.client.command.list().then((x) => setStore("command", reconcile(x.data ?? []))),
             sdk.client.lsp.status().then((x) => setStore("lsp", reconcile(x.data!))),
             sdk.client.mcp.status().then((x) => setStore("mcp", reconcile(x.data!))),

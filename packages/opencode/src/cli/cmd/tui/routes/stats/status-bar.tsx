@@ -19,7 +19,7 @@ export function StatusBar() {
         <span style={{ fg: theme.primary }}>[{range()}]</span> {project()} {model()}
       </text>
       <box flexGrow={1} />
-      <text fg={theme.textMuted}>?:help q:back tab:next f:days p:project</text>
+      <text fg={theme.textMuted}>?:help q:back tab:next f:days p:project m:model</text>
     </box>
   )
 }
