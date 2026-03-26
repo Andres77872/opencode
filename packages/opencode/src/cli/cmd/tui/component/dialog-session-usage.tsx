@@ -43,6 +43,15 @@ function dollars(n: number) {
   }).format(n)
 }
 
+function pct(n: number) {
+  return (n * 100).toFixed(1) + "%"
+}
+
+function bar(ratio: number, width: number = 20): string {
+  const filled = Math.round(Math.min(1, Math.max(0, ratio)) * width)
+  return "█".repeat(filled) + "░".repeat(width - filled)
+}
+
 type ModelRow = { id: string; provider: string; name: string; tokens: Tokens }
 type ToolRow = { name: string; total: number; ok: number; err: number }
 type AgentRow = { name: string; tokens: Tokens }
@@ -182,6 +191,20 @@ export function DialogSessionUsage() {
     () => combined().input + combined().output + combined().reasoning + combined().cache.read + combined().cache.write,
   )
 
+  // Cache efficiency metrics
+  const cache = createMemo(() => {
+    const c = combined()
+    const context = c.input + c.cache.read
+    const rate = context > 0 ? c.cache.read / context : 0
+    const g = grand()
+    return {
+      rate,
+      input: g > 0 ? c.input / g : 0,
+      output: g > 0 ? c.output / g : 0,
+      read: g > 0 ? c.cache.read / g : 0,
+    }
+  })
+
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
       {/* Header */}
@@ -264,8 +287,14 @@ export function DialogSessionUsage() {
             </text>
           </Show>
           <Show when={combined().cache.read > 0}>
-            <text fg={theme.textMuted}>
-              Cache read: <span style={{ fg: theme.text }}>{fmt(combined().cache.read)}</span>
+            <text fg={theme.accent}>
+              Cache read: <b>{fmt(combined().cache.read)}</b>
+              <Show when={subTotal().cache.read > 0}>
+                <span style={{ fg: theme.textMuted }}>
+                  {" "}
+                  (Main: {fmt(total().cache.read)} · Subagents: {fmt(subTotal().cache.read)})
+                </span>
+              </Show>
             </text>
           </Show>
           <Show when={combined().cache.write > 0}>
@@ -276,7 +305,30 @@ export function DialogSessionUsage() {
           <text fg={theme.textMuted}>
             Total: <span style={{ fg: theme.text }}>{fmt(grand())}</span>
           </text>
+          <Show when={grand() > 0}>
+            <text fg={theme.textMuted}>
+              Distribution: <span style={{ fg: theme.text }}>{pct(cache().input)}</span> input ·{" "}
+              <span style={{ fg: theme.text }}>{pct(cache().output)}</span> output ·{" "}
+              <span style={{ fg: theme.accent }}>{pct(cache().read)}</span> cache
+            </text>
+          </Show>
         </box>
+
+        {/* Cache Efficiency */}
+        <Show when={combined().cache.read > 0}>
+          <box>
+            <text fg={theme.text}>
+              <b>Cache Efficiency</b>
+            </text>
+            <text fg={theme.accent}>
+              Hit rate: <b>{pct(cache().rate)}</b>
+              <span style={{ fg: theme.textMuted }}> of input context served from cache</span>
+            </text>
+            <text fg={theme.accent}>
+              {bar(cache().rate)} <span style={{ fg: theme.textMuted }}>{Math.round(cache().rate * 100)}%</span>
+            </text>
+          </box>
+        </Show>
 
         {/* Section C: Per-model breakdown */}
         <Show when={models().length > 0}>
@@ -289,8 +341,10 @@ export function DialogSessionUsage() {
                 <text fg={theme.text} wrapMode="word">
                   {row.provider}/{row.name}{" "}
                   <span style={{ fg: theme.textMuted }}>
-                    {fmt(row.tokens.count)} msgs · {fmt(row.tokens.input)} in · {fmt(row.tokens.output)} out
-                    {row.tokens.reasoning > 0 ? ` · ${fmt(row.tokens.reasoning)} reasoning` : ""}
+                    {fmt(row.tokens.count)} msgs · {Locale.number(row.tokens.input)} in ·{" "}
+                    {Locale.number(row.tokens.output)} out
+                    {row.tokens.reasoning > 0 ? ` · ${Locale.number(row.tokens.reasoning)} reasoning` : ""}
+                    {row.tokens.cache.read > 0 ? ` · ${Locale.number(row.tokens.cache.read)} cache` : ""}
                     {" · "}
                     {dollars(row.tokens.cost)}
                   </span>
@@ -335,19 +389,26 @@ export function DialogSessionUsage() {
                 <text fg={theme.text} wrapMode="word">
                   {row.agent}{" "}
                   <span style={{ fg: theme.textMuted }}>
-                    {fmt(row.messages)} msgs · {fmt(row.tokens.input)} in · {fmt(row.tokens.output)} out
-                    {row.tokens.cache.read > 0 ? ` · ${fmt(row.tokens.cache.read)} cache` : ""} ·{" "}
-                    {dollars(row.tokens.cost)}
+                    {fmt(row.messages)} msgs · {Locale.number(row.tokens.input)} in · {Locale.number(row.tokens.output)}{" "}
+                    out
+                    {row.tokens.cache.read > 0 ? ` · ` : ""}
                   </span>
+                  {row.tokens.cache.read > 0 ? (
+                    <span style={{ fg: theme.accent }}>{Locale.number(row.tokens.cache.read)} cache</span>
+                  ) : null}
+                  <span style={{ fg: theme.textMuted }}> · {dollars(row.tokens.cost)}</span>
                 </text>
               )}
             </For>
             <text fg={theme.textMuted}>
               Subagent total:{" "}
               <span style={{ fg: theme.text }}>
-                {fmt(subTotal().input)} in · {fmt(subTotal().output)} out
-                {subTotal().cache.read > 0 ? ` · ${fmt(subTotal().cache.read)} cache` : ""} · {dollars(subTotal().cost)}
+                {Locale.number(subTotal().input)} in · {Locale.number(subTotal().output)} out
               </span>
+              {subTotal().cache.read > 0 ? (
+                <span style={{ fg: theme.accent }}> · {Locale.number(subTotal().cache.read)} cache</span>
+              ) : null}
+              <span style={{ fg: theme.text }}> · {dollars(subTotal().cost)}</span>
             </text>
           </box>
         </Show>
@@ -363,7 +424,10 @@ export function DialogSessionUsage() {
                 <text fg={theme.text} wrapMode="word">
                   {row.name}{" "}
                   <span style={{ fg: theme.textMuted }}>
-                    {fmt(row.tokens.count)} msgs · {fmt(row.tokens.input)} in · {fmt(row.tokens.output)} out ·{" "}
+                    {fmt(row.tokens.count)} msgs · {Locale.number(row.tokens.input)} in ·{" "}
+                    {Locale.number(row.tokens.output)} out
+                    {row.tokens.cache.read > 0 ? ` · ${Locale.number(row.tokens.cache.read)} cache` : ""}
+                    {" · "}
                     {dollars(row.tokens.cost)}
                   </span>
                 </text>
