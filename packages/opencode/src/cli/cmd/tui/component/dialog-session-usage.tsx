@@ -1,4 +1,5 @@
 import { TextAttributes } from "@opentui/core"
+import { useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { useSync } from "@tui/context/sync"
@@ -42,6 +43,15 @@ function dollars(n: number) {
   }).format(n)
 }
 
+function pct(n: number) {
+  return (n * 100).toFixed(1) + "%"
+}
+
+function bar(ratio: number, width: number = 20): string {
+  const filled = Math.round(Math.min(1, Math.max(0, ratio)) * width)
+  return "█".repeat(filled) + "░".repeat(width - filled)
+}
+
 type ModelRow = { id: string; provider: string; name: string; tokens: Tokens }
 type ToolRow = { name: string; total: number; ok: number; err: number }
 type AgentRow = { name: string; tokens: Tokens }
@@ -53,6 +63,7 @@ export function DialogSessionUsage() {
   const route = useRouteData("session")
   const { theme } = useTheme()
   const dialog = useDialog()
+  const dim = useTerminalDimensions()
 
   const session = createMemo(() => sync.session.get(route.sessionID))
   const msgs = createMemo(() => sync.data.message[route.sessionID] ?? [])
@@ -163,9 +174,36 @@ export function DialogSessionUsage() {
     return t
   })
 
+  const combined = createMemo(() => {
+    const m = total()
+    const s = subTotal()
+    return {
+      input: m.input + s.input,
+      output: m.output + s.output,
+      reasoning: m.reasoning + s.reasoning,
+      cache: { read: m.cache.read + s.cache.read, write: m.cache.write + s.cache.write },
+      cost: m.cost + s.cost,
+      count: m.count + s.count,
+    }
+  })
+
   const grand = createMemo(
-    () => total().input + total().output + total().reasoning + total().cache.read + total().cache.write,
+    () => combined().input + combined().output + combined().reasoning + combined().cache.read + combined().cache.write,
   )
+
+  // Cache efficiency metrics
+  const cache = createMemo(() => {
+    const c = combined()
+    const context = c.input + c.cache.read
+    const rate = context > 0 ? c.cache.read / context : 0
+    const g = grand()
+    return {
+      rate,
+      input: g > 0 ? c.input / g : 0,
+      output: g > 0 ? c.output / g : 0,
+      read: g > 0 ? c.cache.read / g : 0,
+    }
+  })
 
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
@@ -179,150 +217,225 @@ export function DialogSessionUsage() {
         </text>
       </box>
 
-      {/* Section A: Summary */}
-      <box>
-        <text fg={theme.text}>
-          <b>Summary</b>
-        </text>
-        <text fg={theme.textMuted}>
-          Session: <span style={{ fg: theme.text }}>{session()?.title ?? route.sessionID}</span>
-        </text>
-        <Show when={duration() > 0}>
-          <text fg={theme.textMuted}>
-            Duration: <span style={{ fg: theme.text }}>{Locale.duration(duration())}</span>
-          </text>
-        </Show>
-        <text fg={theme.textMuted}>
-          Messages: <span style={{ fg: theme.text }}>{fmt(msgs().length)}</span>
-          <span style={{ fg: theme.textMuted }}>
-            {" "}
-            ({fmt(msgs().filter((m) => m.role === "user").length)} user · {fmt(assistants().length)} assistant)
-          </span>
-        </text>
-        <text fg={theme.textMuted}>
-          Total cost: <span style={{ fg: theme.text }}>{dollars(total().cost)}</span>
-        </text>
-      </box>
-
-      {/* Section B: Token breakdown */}
-      <box>
-        <text fg={theme.text}>
-          <b>Tokens</b>
-        </text>
-        <text fg={theme.textMuted}>
-          Input: <span style={{ fg: theme.text }}>{fmt(total().input)}</span>
-        </text>
-        <text fg={theme.textMuted}>
-          Output: <span style={{ fg: theme.text }}>{fmt(total().output)}</span>
-        </text>
-        <Show when={total().reasoning > 0}>
-          <text fg={theme.textMuted}>
-            Reasoning: <span style={{ fg: theme.text }}>{fmt(total().reasoning)}</span>
-          </text>
-        </Show>
-        <Show when={total().cache.read > 0}>
-          <text fg={theme.textMuted}>
-            Cache read: <span style={{ fg: theme.text }}>{fmt(total().cache.read)}</span>
-          </text>
-        </Show>
-        <Show when={total().cache.write > 0}>
-          <text fg={theme.textMuted}>
-            Cache write: <span style={{ fg: theme.text }}>{fmt(total().cache.write)}</span>
-          </text>
-        </Show>
-        <text fg={theme.textMuted}>
-          Total: <span style={{ fg: theme.text }}>{fmt(grand())}</span>
-        </text>
-      </box>
-
-      {/* Section C: Per-model breakdown */}
-      <Show when={models().length > 0}>
+      <scrollbox
+        gap={1}
+        maxHeight={Math.floor(dim().height * 0.6)}
+        verticalScrollbarOptions={{
+          trackOptions: {
+            backgroundColor: theme.backgroundPanel,
+            foregroundColor: theme.border,
+          },
+        }}
+      >
+        {/* Section A: Summary */}
         <box>
           <text fg={theme.text}>
-            <b>Models</b>
+            <b>Summary</b>
           </text>
-          <For each={models()}>
-            {(row) => (
-              <text fg={theme.text} wrapMode="word">
-                {row.provider}/{row.name}{" "}
-                <span style={{ fg: theme.textMuted }}>
-                  {fmt(row.tokens.count)} msgs · {fmt(row.tokens.input)} in · {fmt(row.tokens.output)} out
-                  {row.tokens.reasoning > 0 ? ` · ${fmt(row.tokens.reasoning)} reasoning` : ""}
-                  {" · "}
-                  {dollars(row.tokens.cost)}
-                </span>
-              </text>
-            )}
-          </For>
-        </box>
-      </Show>
-
-      {/* Section D: Tool usage */}
-      <Show when={tools().length > 0}>
-        <box>
-          <text fg={theme.text}>
-            <b>Tools</b>
-          </text>
-          <For each={tools()}>
-            {(row) => (
-              <text fg={theme.text} wrapMode="word">
-                {row.name}{" "}
-                <span style={{ fg: theme.textMuted }}>
-                  {fmt(row.total)} calls
-                  {row.ok > 0 ? ` · ${fmt(row.ok)} ok` : ""}
-                  {row.err > 0 ? ` · ${fmt(row.err)} err` : ""}
-                </span>
-              </text>
-            )}
-          </For>
-        </box>
-      </Show>
-
-      {/* Section E: Subagent sessions */}
-      <Show when={children.loading}>
-        <text fg={theme.textMuted}>Loading subagent data…</text>
-      </Show>
-      <Show when={!children.loading && children() && children()!.length > 0}>
-        <box>
-          <text fg={theme.text}>
-            <b>Subagents</b>
-          </text>
-          <For each={children()}>
-            {(row) => (
-              <text fg={theme.text} wrapMode="word">
-                {row.agent}{" "}
-                <span style={{ fg: theme.textMuted }}>
-                  {fmt(row.messages)} msgs · {fmt(row.tokens.input)} in · {fmt(row.tokens.output)} out ·{" "}
-                  {dollars(row.tokens.cost)}
-                </span>
-              </text>
-            )}
-          </For>
           <text fg={theme.textMuted}>
-            Subagent total: <span style={{ fg: theme.text }}>{dollars(subTotal().cost)}</span>
+            Session: <span style={{ fg: theme.text }}>{session()?.title ?? route.sessionID}</span>
+          </text>
+          <Show when={duration() > 0}>
+            <text fg={theme.textMuted}>
+              Duration: <span style={{ fg: theme.text }}>{Locale.duration(duration())}</span>
+            </text>
+          </Show>
+          <text fg={theme.textMuted}>
+            Messages: <span style={{ fg: theme.text }}>{fmt(msgs().length)}</span>
+            <span style={{ fg: theme.textMuted }}>
+              {" "}
+              ({fmt(msgs().filter((m) => m.role === "user").length)} user · {fmt(assistants().length)} assistant)
+            </span>
+          </text>
+          <text fg={theme.textMuted}>
+            Total cost: <span style={{ fg: theme.text }}>{dollars(combined().cost)}</span>
+            <Show when={subTotal().cost > 0}>
+              <span style={{ fg: theme.textMuted }}>
+                {" "}
+                (Main: {dollars(total().cost)} · Subagents: {dollars(subTotal().cost)})
+              </span>
+            </Show>
           </text>
         </box>
-      </Show>
 
-      {/* Section F: Per-agent breakdown */}
-      <Show when={agents().length > 1}>
+        {/* Section B: Token breakdown */}
         <box>
           <text fg={theme.text}>
-            <b>Agents</b>
+            <b>Tokens</b>
           </text>
-          <For each={agents()}>
-            {(row) => (
-              <text fg={theme.text} wrapMode="word">
-                {row.name}{" "}
+          <text fg={theme.textMuted}>
+            Input: <span style={{ fg: theme.text }}>{fmt(combined().input)}</span>
+            <Show when={subTotal().input > 0}>
+              <span style={{ fg: theme.textMuted }}>
+                {" "}
+                (Main: {fmt(total().input)} · Subagents: {fmt(subTotal().input)})
+              </span>
+            </Show>
+          </text>
+          <text fg={theme.textMuted}>
+            Output: <span style={{ fg: theme.text }}>{fmt(combined().output)}</span>
+            <Show when={subTotal().output > 0}>
+              <span style={{ fg: theme.textMuted }}>
+                {" "}
+                (Main: {fmt(total().output)} · Subagents: {fmt(subTotal().output)})
+              </span>
+            </Show>
+          </text>
+          <Show when={combined().reasoning > 0}>
+            <text fg={theme.textMuted}>
+              Reasoning: <span style={{ fg: theme.text }}>{fmt(combined().reasoning)}</span>
+            </text>
+          </Show>
+          <Show when={combined().cache.read > 0}>
+            <text fg={theme.accent}>
+              Cache read: <b>{fmt(combined().cache.read)}</b>
+              <Show when={subTotal().cache.read > 0}>
                 <span style={{ fg: theme.textMuted }}>
-                  {fmt(row.tokens.count)} msgs · {fmt(row.tokens.input)} in · {fmt(row.tokens.output)} out ·{" "}
-                  {dollars(row.tokens.cost)}
+                  {" "}
+                  (Main: {fmt(total().cache.read)} · Subagents: {fmt(subTotal().cache.read)})
                 </span>
-              </text>
-            )}
-          </For>
+              </Show>
+            </text>
+          </Show>
+          <Show when={combined().cache.write > 0}>
+            <text fg={theme.textMuted}>
+              Cache write: <span style={{ fg: theme.text }}>{fmt(combined().cache.write)}</span>
+            </text>
+          </Show>
+          <text fg={theme.textMuted}>
+            Total: <span style={{ fg: theme.text }}>{fmt(grand())}</span>
+          </text>
+          <Show when={grand() > 0}>
+            <text fg={theme.textMuted}>
+              Distribution: <span style={{ fg: theme.text }}>{pct(cache().input)}</span> input ·{" "}
+              <span style={{ fg: theme.text }}>{pct(cache().output)}</span> output ·{" "}
+              <span style={{ fg: theme.accent }}>{pct(cache().read)}</span> cache
+            </text>
+          </Show>
         </box>
-      </Show>
+
+        {/* Cache Efficiency */}
+        <Show when={combined().cache.read > 0}>
+          <box>
+            <text fg={theme.text}>
+              <b>Cache Efficiency</b>
+            </text>
+            <text fg={theme.accent}>
+              Hit rate: <b>{pct(cache().rate)}</b>
+              <span style={{ fg: theme.textMuted }}> of input context served from cache</span>
+            </text>
+            <text fg={theme.accent}>
+              {bar(cache().rate)} <span style={{ fg: theme.textMuted }}>{Math.round(cache().rate * 100)}%</span>
+            </text>
+          </box>
+        </Show>
+
+        {/* Section C: Per-model breakdown */}
+        <Show when={models().length > 0}>
+          <box>
+            <text fg={theme.text}>
+              <b>Models</b>
+            </text>
+            <For each={models()}>
+              {(row) => (
+                <text fg={theme.text} wrapMode="word">
+                  {row.provider}/{row.name}{" "}
+                  <span style={{ fg: theme.textMuted }}>
+                    {fmt(row.tokens.count)} msgs · {Locale.number(row.tokens.input)} in ·{" "}
+                    {Locale.number(row.tokens.output)} out
+                    {row.tokens.reasoning > 0 ? ` · ${Locale.number(row.tokens.reasoning)} reasoning` : ""}
+                    {row.tokens.cache.read > 0 ? ` · ${Locale.number(row.tokens.cache.read)} cache` : ""}
+                    {" · "}
+                    {dollars(row.tokens.cost)}
+                  </span>
+                </text>
+              )}
+            </For>
+          </box>
+        </Show>
+
+        {/* Section D: Tool usage */}
+        <Show when={tools().length > 0}>
+          <box>
+            <text fg={theme.text}>
+              <b>Tools</b>
+            </text>
+            <For each={tools()}>
+              {(row) => (
+                <text fg={theme.text} wrapMode="word">
+                  {row.name}{" "}
+                  <span style={{ fg: theme.textMuted }}>
+                    {fmt(row.total)} calls
+                    {row.ok > 0 ? ` · ${fmt(row.ok)} ok` : ""}
+                    {row.err > 0 ? ` · ${fmt(row.err)} err` : ""}
+                  </span>
+                </text>
+              )}
+            </For>
+          </box>
+        </Show>
+
+        {/* Section E: Subagent sessions */}
+        <Show when={children.loading}>
+          <text fg={theme.textMuted}>Loading subagent data…</text>
+        </Show>
+        <Show when={!children.loading && children() && children()!.length > 0}>
+          <box>
+            <text fg={theme.text}>
+              <b>Subagents</b>
+            </text>
+            <For each={children()}>
+              {(row) => (
+                <text fg={theme.text} wrapMode="word">
+                  {row.agent}{" "}
+                  <span style={{ fg: theme.textMuted }}>
+                    {fmt(row.messages)} msgs · {Locale.number(row.tokens.input)} in · {Locale.number(row.tokens.output)}{" "}
+                    out
+                    {row.tokens.cache.read > 0 ? ` · ` : ""}
+                  </span>
+                  {row.tokens.cache.read > 0 ? (
+                    <span style={{ fg: theme.accent }}>{Locale.number(row.tokens.cache.read)} cache</span>
+                  ) : null}
+                  <span style={{ fg: theme.textMuted }}> · {dollars(row.tokens.cost)}</span>
+                </text>
+              )}
+            </For>
+            <text fg={theme.textMuted}>
+              Subagent total:{" "}
+              <span style={{ fg: theme.text }}>
+                {Locale.number(subTotal().input)} in · {Locale.number(subTotal().output)} out
+              </span>
+              {subTotal().cache.read > 0 ? (
+                <span style={{ fg: theme.accent }}> · {Locale.number(subTotal().cache.read)} cache</span>
+              ) : null}
+              <span style={{ fg: theme.text }}> · {dollars(subTotal().cost)}</span>
+            </text>
+          </box>
+        </Show>
+
+        {/* Section F: Per-agent breakdown */}
+        <Show when={agents().length > 1}>
+          <box>
+            <text fg={theme.text}>
+              <b>Agents</b>
+            </text>
+            <For each={agents()}>
+              {(row) => (
+                <text fg={theme.text} wrapMode="word">
+                  {row.name}{" "}
+                  <span style={{ fg: theme.textMuted }}>
+                    {fmt(row.tokens.count)} msgs · {Locale.number(row.tokens.input)} in ·{" "}
+                    {Locale.number(row.tokens.output)} out
+                    {row.tokens.cache.read > 0 ? ` · ${Locale.number(row.tokens.cache.read)} cache` : ""}
+                    {" · "}
+                    {dollars(row.tokens.cost)}
+                  </span>
+                </text>
+              )}
+            </For>
+          </box>
+        </Show>
+      </scrollbox>
     </box>
   )
 }

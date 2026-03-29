@@ -38,7 +38,15 @@ export function StatTable(props: {
 
   const widths = createMemo(() => props.columns.map((col) => colwidth(col, props.data)))
 
-  const header = createMemo(() => props.columns.map((col, i) => cell(col.label, col, widths()[i])).join("  "))
+  const header = createMemo(() =>
+    props.columns
+      .map((col, i) => {
+        const label = String(col.label)
+        const w = widths()[i]
+        return col.align === "right" ? label.padStart(w) : label.padEnd(w)
+      })
+      .join("  "),
+  )
 
   return (
     <box>

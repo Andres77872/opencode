@@ -1,4 +1,4 @@
-import { createSignal, createResource } from "solid-js"
+import { createSignal, createResource, createMemo } from "solid-js"
 import { createSimpleContext } from "../../context/helper"
 import { useSync } from "../../context/sync"
 import { useSDK } from "../../context/sdk"
@@ -11,6 +11,7 @@ export const { use: useStats, provider: StatsProvider } = createSimpleContext({
   name: "Stats",
   init: () => {
     const sdk = useSDK()
+    const sync = useSync()
     const [tab, setTab] = createSignal(0)
     const [filter, setFilter] = createSignal<Stats.Filter>({})
     const [projects] = createResource(async () => {
@@ -20,6 +21,9 @@ export const { use: useStats, provider: StatsProvider } = createSimpleContext({
         name: p.name || p.worktree?.split("/").pop() || p.id,
       }))
     })
+    const models = createMemo(() =>
+      sync.data.provider_next.all.flatMap((p) => Object.values(p.models).map((m) => ({ id: m.id, name: m.name }))),
+    )
     return {
       get tab() {
         return tab()
@@ -29,6 +33,9 @@ export const { use: useStats, provider: StatsProvider } = createSimpleContext({
       },
       get projects() {
         return projects() ?? []
+      },
+      get models() {
+        return models()
       },
       tabs,
       setTab,
@@ -42,7 +49,7 @@ export function useSource(): Stats.Source {
   const sdk = useSDK()
   const stats = useStats()
   return {
-    sessions: sync.data.session,
+    sessions: sync.data.globalSession,
     messages: async (sessionID: string) => {
       const r = await sdk.client.session.messages({ sessionID })
       return r.data ?? []
