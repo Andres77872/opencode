@@ -60,6 +60,7 @@ import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
+import { DialogSessionUsage } from "../../component/dialog-session-usage"
 import { Sidebar } from "./sidebar"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { Flag } from "@/flag/flag"
@@ -561,6 +562,18 @@ export function Session() {
           sessionID: route.sessionID,
           messageID: message.id,
         })
+      },
+    },
+    {
+      title: "View session usage",
+      value: "session.usage",
+      keybind: "session_usage",
+      category: "Session",
+      slash: {
+        name: "usage",
+      },
+      onSelect: (dialog) => {
+        dialog.replace(() => <DialogSessionUsage />)
       },
     },
     {
