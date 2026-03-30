@@ -31,6 +31,7 @@ import { DialogModel, useConnected } from "@tui/component/dialog-model"
 import { DialogMcp } from "@tui/component/dialog-mcp"
 import { DialogStatus } from "@tui/component/dialog-status"
 import { DialogThemeList } from "@tui/component/dialog-theme-list"
+import { DialogUsage } from "@tui/component/dialog-usage"
 import { DialogHelp } from "./ui/dialog-help"
 import { CommandProvider, useCommandDialog } from "@tui/component/dialog-command"
 import { DialogAgent } from "@tui/component/dialog-agent"
@@ -40,6 +41,7 @@ import { KeybindProvider, useKeybind } from "@tui/context/keybind"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
+import { Stats } from "@tui/routes/stats"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -361,6 +363,11 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
 
     if (route.data.type === "plugin") {
       renderer.setTerminalTitle(`OC | ${route.data.id}`)
+      return
+    }
+
+    if (route.data.type === "stats") {
+      renderer.setTerminalTitle("OC | Stats")
     }
   })
 
@@ -636,6 +643,27 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       category: "System",
     },
     {
+      title: "Stats dashboard",
+      value: "stats.view",
+      keybind: "stats_view",
+      category: "Stats",
+      slash: {
+        name: "stats",
+        aliases: ["dashboard"],
+      },
+      onSelect: () => {
+        route.navigate({ type: "stats" })
+      },
+    },
+    {
+      title: "Global usage",
+      value: "usage.global",
+      category: "Stats",
+      onSelect: () => {
+        dialog.replace(() => <DialogUsage />)
+      },
+    },
+    {
       title: "Switch theme",
       value: "theme.switch",
       keybind: "theme_list",
@@ -902,6 +930,9 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
           </Match>
           <Match when={route.data.type === "session"}>
             <Session />
+          </Match>
+          <Match when={route.data.type === "stats"}>
+            <Stats />
           </Match>
         </Switch>
       </Show>

@@ -3,6 +3,7 @@ import type {
   Agent,
   Provider,
   Session,
+  GlobalSession,
   Part,
   Config,
   Todo,
@@ -49,6 +50,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       }
       config: Config
       session: Session[]
+      globalSession: GlobalSession[]
+      globalSessionStatus: "idle" | "loading" | "ready" | "error"
+      globalSessionError?: string
       session_status: {
         [sessionID: string]: SessionStatus
       }
@@ -91,6 +95,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       provider: [],
       provider_default: {},
       session: [],
+      globalSession: [],
+      globalSessionStatus: "idle",
+      globalSessionError: undefined,
       session_status: {},
       session_diff: {},
       todo: {},
@@ -361,6 +368,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const sessionListPromise = sdk.client.session
         .list({ start: start })
         .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
+      const globalSessionPromise = sdk.client.experimental.session
+        .list({ start })
+        .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
 
       // blocking - include session.list when continuing a session
       const providersPromise = sdk.client.config.providers({}, { throwOnError: true })
@@ -408,9 +418,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
         .then(() => {
           if (store.status !== "complete") setStore("status", "partial")
+          setStore("globalSessionStatus", "loading")
+          setStore("globalSessionError", undefined)
           // non-blocking
           Promise.all([
             ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", reconcile(sessions)))]),
+            globalSessionPromise
+              .then((sessions) => {
+                batch(() => {
+                  setStore("globalSession", reconcile(sessions))
+                  setStore("globalSessionStatus", "ready")
+                  setStore("globalSessionError", undefined)
+                })
+              })
+              .catch((err) => {
+                batch(() => {
+                  setStore("globalSession", reconcile([]))
+                  setStore("globalSessionStatus", "error")
+                  setStore("globalSessionError", err instanceof Error ? err.message : String(err))
+                })
+              }),
             sdk.client.command.list().then((x) => setStore("command", reconcile(x.data ?? []))),
             sdk.client.lsp.status().then((x) => setStore("lsp", reconcile(x.data!))),
             sdk.client.mcp.status().then((x) => setStore("mcp", reconcile(x.data!))),
